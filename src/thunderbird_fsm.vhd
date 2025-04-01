@@ -10,10 +10,45 @@
 --| 
 --| ---------------------------------------------------------------------------
 --|
---| FILENAME      : thunderbird_fsm_tb.vhd (TEST BENCH)
---| AUTHOR(S)     : Capt Phillip Warner
---| CREATED       : 03/2017
---| DESCRIPTION   : This file tests the thunderbird_fsm modules.
+--| FILENAME      : thunderbird_fsm.vhd
+--| AUTHOR(S)     : Capt Phillip Warner, Capt Dan Johnson
+--| CREATED       : 03/2017 Last modified 06/25/2020
+--| DESCRIPTION   : This file implements the ECE 281 Lab 2 Thunderbird tail lights
+--|					FSM using enumerated types.  This was used to create the
+--|					erroneous sim for GR1
+--|
+--|					Inputs:  i_clk 	 --> 100 MHz clock from FPGA
+--|                          i_left  --> left turn signal
+--|                          i_right --> right turn signal
+--|                          i_reset --> FSM reset
+--|
+--|					Outputs:  o_lights_L (2:0) --> 3-bit left turn signal lights
+--|					          o_lights_R (2:0) --> 3-bit right turn signal lights
+--|
+--|					Upon reset, the FSM by defaults has all lights off.
+--|					Left ON - pattern of increasing lights to left
+--|						(OFF, LA, LA/LB, LA/LB/LC, repeat)
+--|					Right ON - pattern of increasing lights to right
+--|						(OFF, RA, RA/RB, RA/RB/RC, repeat)
+--|					L and R ON - hazard lights (OFF, ALL ON, repeat)
+--|					A is LSB of lights output and C is MSB.
+--|					Once a pattern starts, it finishes back at OFF before it 
+--|					can be changed by the inputs
+--|					
+--|
+--|                 xxx State Encoding key
+--|                 --------------------
+--|                  State | Encoding
+--|                 --------------------
+--|                  OFF   | 
+--|                  ON    | 
+--|                  R1    | 
+--|                  R2    | 
+--|                  R3    | 
+--|                  L1    | 
+--|                  L2    | 
+--|                  L3    | 
+--|                 --------------------
 --|
 --|
 --+----------------------------------------------------------------------------
@@ -22,8 +57,7 @@
 --|
 --|    Libraries : ieee
 --|    Packages  : std_logic_1164, numeric_std
---|    Files     : thunderbird_fsm_enumerated.vhd, thunderbird_fsm_binary.vhd, 
---|				   or thunderbird_fsm_onehot.vhd
+--|    Files     : None
 --|
 --+----------------------------------------------------------------------------
 --|
@@ -48,93 +82,52 @@
 --|
 --+----------------------------------------------------------------------------
 library ieee;
-  use ieee.std_logic_1164.all;
-  use ieee.numeric_std.all;
-  
-entity thunderbird_fsm_tb is
-end thunderbird_fsm_tb;
-
-architecture test_bench of thunderbird_fsm_tb is 
-	
-	component thunderbird_fsm is 
-port (
-        i_clk, i_reset  : in    std_logic;
-        i_left, i_right : in    std_logic;
-        o_lights_L      : out   std_logic_vector(2 downto 0);
-        o_lights_R      : out   std_logic_vector(2 downto 0)
-    );
-	end component thunderbird_fsm;
-
-	-- test I/O signals
-	signal clk_tb      : std_logic := '0';
-    signal reset_tb    : std_logic := '0';
-    signal left_tb     : std_logic := '0';
-    signal right_tb    : std_logic := '0';
-    signal lights_L_tb : std_logic_vector(2 downto 0);
-    signal lights_R_tb : std_logic_vector(2 downto 0);
-
-	-- constants
-	constant clk_period : time := 10 ns;
-
-	
+use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
+ 
+entity thunderbird_fsm is 
+  port(
+	i_clk, i_reset : in std_logic;
+	i_left, i_right: in std_logic;
+	o_lights_L     : out std_logic_vector(2 downto 0); -- LA -> 0, LC -> 2
+	o_lights_R     : out std_logic_vector(2 downto 0)  -- RA -> 0, RC -> 2
+  );
+end thunderbird_fsm;
+ 
+architecture thunderbird_fsm_arch of thunderbird_fsm is 
+  -- Constants and state signals
+  signal state : std_logic_vector(7 downto 0) := "10000000";
+  signal Nstate : std_logic_vector(7 downto 0) := "10000000";
 begin
-	-- PORT MAPS ----------------------------------------
-	 uut: thunderbird_fsm 
-        port map (
-            i_clk      => clk_tb,
-            i_reset    => reset_tb,
-            i_left     => left_tb,
-            i_right    => right_tb,
-            o_lights_L => lights_L_tb,
-            o_lights_R => lights_R_tb
-        );
-
-	-----------------------------------------------------
-	
-	-- PROCESSES ----------------------------------------	
-    -- Clock process ------------------------------------
-    clk_process : process
-    begin
-        while true loop
-            clk_tb <= '0';
-            wait for clk_period / 2;
-            clk_tb <= '1';
-            wait for clk_period / 2;
-        end loop;
-    end process;
-	-----------------------------------------------------
-	
-	-- Test Plan Process --------------------------------
-	stim_proc: process
-    begin
-        -- Reset sequence
-        reset_tb <= '1';
-        wait for 2 * clk_period;
-        reset_tb <= '0';
-        wait for clk_period;
-
-        -- Left Turn Sequence
-        left_tb <= '1';
-        wait for 5 * clk_period;
-        left_tb <= '0';
-        wait for 5 * clk_period;
-
-        -- Right Turn Sequence
-        right_tb <= '1';
-        wait for 5 * clk_period;
-        right_tb <= '0';
-        wait for 5 * clk_period;
-
-        -- Hazard Lights (Both ON)
-        left_tb <= '1';
-        right_tb <= '1';
-        wait for 5 * clk_period;
-        left_tb <= '0';
-        right_tb <= '0';
-        wait for 5 * clk_period;
-
-	-----------------------------------------------------	
- wait;
- end process;
-	
-end test_bench;
+ 
+  -- Next state logic
+  Nstate(0) <= state(1);
+  Nstate(1) <= state(2);
+  Nstate(2) <= state(7) AND i_left AND (NOT i_right);
+  Nstate(3) <= state(4);
+  Nstate(4) <= state(5);
+  Nstate(5) <= state(7) AND (NOT i_left) AND i_right;
+  Nstate(6) <= state(7) AND i_left AND i_right;
+  Nstate(7) <= (state(7) AND (NOT i_left) AND (NOT i_right)) OR state(6) OR state(3) OR state(0);
+ 
+  -- Output logic
+  o_lights_R(0) <= state(6) OR state(5) OR state(4) OR state(3);
+  o_lights_R(1) <= state(6) OR state(4) OR state(3);
+  o_lights_R(2) <= state(6) OR state(3);
+  o_lights_L(0) <= state(6) OR state(2) OR state(1) OR state(0);
+  o_lights_L(1) <= state(6) OR state(1) OR state(0);
+  o_lights_L(2) <= state(6) OR state(0);
+ 
+  -- State register update
+  register_proc : process (i_clk, i_reset)
+  begin
+    if (rising_edge(i_clk)) then
+      if i_reset = '1' then
+        state <= "10000000";
+      else
+        state <= Nstate;
+      end if;
+    end if;
+  end process register_proc;
+ 
+end thunderbird_fsm_arch;
