@@ -59,77 +59,78 @@
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
-
+ 
 entity top_basys3 is
     port (
-        clk     : in std_logic;  -- 100MHz FPGA clock
-        
-        -- Switches (16 total)
-        sw      : in std_logic_vector(15 downto 0); -- sw(15) = left; sw(0) = right
-
-        -- LEDs (16 total)
-        led     : out std_logic_vector(15 downto 0); -- led(15:13) --> L, led(2:0) --> R
-        
-        -- Buttons (5 total)
-        btnL    : in std_logic;  -- clk_reset
-        btnR    : in std_logic   -- fsm_reset
+        clk   : in  std_logic;                        -- 100 MHz clock
+        sw    : in  std_logic_vector(15 downto 0);    -- switches (sw15 = left, sw0 = right)
+        led   : out std_logic_vector(15 downto 0);    -- LEDs (15:13 = L, 2:0 = R)
+        btnC  : in  std_logic;
+        btnU  : in  std_logic;
+        btnL  : in  std_logic;                        -- clock reset
+        btnR  : in  std_logic;                        -- FSM reset
+        btnD  : in  std_logic
     );
 end top_basys3;
-
-architecture top_basys3_arch of top_basys3 is 
-
-    -- Declare components
-    component thunderbird_fsm is 
+ 
+architecture top_basys3_arch of top_basys3 is
+ 
+    -- COMPONENT DECLARATIONS ----------------------------
+ 
+    component thunderbird_fsm
         port (
-            i_clk, i_reset  : in  std_logic;
-            i_left, i_right : in  std_logic;
-            o_lights_L      : out std_logic_vector(2 downto 0);
-            o_lights_R      : out std_logic_vector(2 downto 0)
+            i_clk       : in  std_logic;
+            i_reset     : in  std_logic;
+            i_left      : in  std_logic;
+            i_right     : in  std_logic;
+            o_lights_L  : out std_logic_vector(2 downto 0);
+            o_lights_R  : out std_logic_vector(2 downto 0)
         );
     end component;
-
+ 
     component clock_divider is
-        generic ( constant k_DIV : natural := 2 );
-        port (  
-            i_clk   : in  std_logic;   -- 100MHz clock input
-            i_reset : in  std_logic;   -- Reset
-            o_clk   : out std_logic    -- Slowed clock output
+        generic (
+            k_DIV : natural := 2
+        );
+        port (
+            i_clk   : in  std_logic;
+            i_reset : in  std_logic;
+            o_clk   : out std_logic
         );
     end component;
-
-    -- Internal Signals
-    signal w_clk_slow : std_logic;  -- Slowed-down clock signal
-    signal w_reset    : std_logic;  -- Reset signal
-    signal w_lights_L : std_logic_vector(2 downto 0);
-    signal w_lights_R : std_logic_vector(2 downto 0);
-
+ 
+    -- INTERNAL SIGNALS ----------------------------------
+    signal slow_clk    : std_logic;
+    signal lights_L    : std_logic_vector(2 downto 0);
+    signal lights_R    : std_logic_vector(2 downto 0);
+ 
 begin
-
-    -- Clock Divider Instance (Slow down 100MHz to 4Hz)
-    clock_div_inst : clock_divider
-        generic map ( k_DIV => 25000000 )  -- Adjust division factor for ~4Hz
+ 
+    -- CLOCK DIVIDER INSTANCE ----------------------------
+    clk_div: clock_divider
+        generic map (k_DIV => 25000000)  -- 100 MHz ÷ 25M = ~4 Hz
         port map (
             i_clk   => clk,
-            i_reset => btnL,  -- Clock reset
-            o_clk   => w_clk_slow
+            i_reset => btnL,             -- clock reset
+            o_clk   => slow_clk
         );
-
-    -- Thunderbird FSM Instance
-    fsm_inst : thunderbird_fsm
+ 
+    -- FSM INSTANCE ---------------------------------------
+    fsm: thunderbird_fsm
         port map (
-            i_clk    => w_clk_slow,
-            i_reset  => btnR,  -- FSM reset
-            i_left   => sw(15),
-            i_right  => sw(0),
-            o_lights_L => w_lights_L,
-            o_lights_R => w_lights_R
+            i_clk      => slow_clk,
+            i_reset    => btnR,
+            i_left     => sw(15),
+            i_right    => sw(0),
+            o_lights_L => lights_L,
+            o_lights_R => lights_R
         );
-
-    -- Assign Outputs to LEDs
-    led(15 downto 13) <= w_lights_L;  -- Left turn signals
-    led(2 downto 0)   <= w_lights_R;  -- Right turn signals
-
-    -- Ground Unused LEDs
+ 
+    -- OUTPUT ASSIGNMENTS -------------------------------
+    led(15 downto 13) <= lights_L;       -- LC, LB, LA
+    led(2 downto 0)   <= lights_R;       -- RA, RB, RC
+ 
+    -- GROUND UNUSED LEDs -------------------------------
     led(12 downto 3) <= (others => '0');
-
+ 
 end top_basys3_arch;
